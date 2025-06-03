@@ -88,7 +88,7 @@ jobs:
     - name: Upload to DefectDojo
       run: |
         curl -k -X POST "http://localhost:8080/api/v2/import-scan/" \
-        -H "Authorization: Token adb785d121ca05104ea73590928b024e4cdb321e" \
+        -H "Authorization: Token ${{ secrets.DEFECTDOJO_API_KEY }}" \
         -F "scan_type=Semgrep JSON Report" \
         -F "file=@semgrep-results.json" \
         -F "engagement= ${{ env.ENGAGEMENT_ID }}" \

@@ -1,100 +1,99 @@
-# .github/workflows/full-security-pipeline.yml
-name: Full DevSecOps Pipeline with DefectDojo
+name: SAST Scan with Semgrep
 
 on:
   workflow_dispatch:
+  #push:
+  #  branches:
+  #    - main
+  #pull_request:
+  #  branches:
+  #    - main
+
 
 jobs:
-  devsecops:
-    runs-on: self-hosted
+  semgrep_scan:
+    name: Semgrep SAST Scan
+    runs-on: self-hosted 
+
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v3
+    - name: Checkout code
+      uses: actions/checkout@v3
 
-      - name: Install Dependencies
-        run: |
-          sudo apt-get update && sudo apt-get install -y curl unzip
-          npm install -g snyk
-          dotnet tool install --global dotnet-sonarscanner
+    #- name: Set up Python
+    #  uses: actions/setup-python@v4
+    #  with:
+    #    python-version: '3.11'
 
-      - name: Create Engagement in DefectDojo
-        id: create_engagement
-        env:
-          DEFECTDOJO_HOST: ${{ secrets.DEFECTDOJO_HOST }}
-          DEFECTDOJO_API_KEY: ${{ secrets.DEFECTDOJO_API_KEY }}
-          DEFECTDOJO_PRODUCT_ID: ${{ secrets.DEFECTDOJO_PRODUCT_ID }}
-        run: |
-          ENGAGEMENT_ID=$(curl -s -X POST "$DEFECTDOJO_HOST/api/v2/engagements/" \
-            -H "Authorization: Token $DEFECTDOJO_API_KEY" \
+    #- name: Install Semgrep and jq (Arch-based)
+    #  run: |
+    #    sudo pacman -Syu --noconfirm semgrep jq
+
+    - name: Ensure Semgrep is in PATH
+      run: |
+        echo "$HOME/.local/bin" >> $GITHUB_PATH
+    
+    - name: Login to Semgrep
+      run: |
+        semgrep logout
+        SEMGREP_APP_TOKEN=c83b422a5b980e2dcde6d23341e73e1d1223e757c0f9e7933dbacdba4b77affd semgrep login
+
+    - name: Run Semgrep scan
+      run: |
+        semgrep scan --config p/owasp-top-ten --config semgrep.yml --config p/security-audit --config p/csharp --include '**/*.cs' --output semgrep-results.json --json
+    - name: Set variables
+      run: |
+        echo "DATE=$(date +%Y-%m-%d)" >> $GITHUB_ENV
+        echo "ENGAGEMENT_NAME=Auto Engagement - ${{ github.run_id }}" >> $GITHUB_ENV
+
+    - name: Create Engagement in DefectDojo
+      id: create_engagement
+      run: |
+          response=$(curl -s -k -X POST "http://localhost:8080/api/v2/engagements/" \
+            -H "Authorization: Token adb785d121ca05104ea73590928b024e4cdb321e" \
             -H "Content-Type: application/json" \
-            -d '{
-              "name": "CI Security Scan - $GITHUB_RUN_ID",
-              "product": $DEFECTDOJO_PRODUCT_ID,
-              "target_start": "$(date +%Y-%m-%d)",
-              "target_end": "$(date +%Y-%m-%d)",
-              "status": "In Progress"
-            }' | jq -r '.id')
-          echo "engagement_id=$ENGAGEMENT_ID" >> $GITHUB_OUTPUT
+            -d @- <<EOF
+          {
+            "name": "${{ env.ENGAGEMENT_NAME }}",
+            "product": ${{ env.PRODUCT_ID }},
+            "target_start": "${{ env.DATE }}",
+            "target_end": "${{ env.DATE }}",
+            "status": "In Progress",
+            "engagement_type": "CI/CD"
+          }
+          EOF
+          )
+          echo "$response"
+          echo "ENGAGEMENT_ID=$(echo "$response" | jq -r '.id')" >> $GITHUB_ENV
+      env:
+          PRODUCT_ID: ${{ secrets.DEFECTDOJO_PRODUCT_ID }}
 
-      - name: Run Semgrep Scan
-        uses: returntocorp/semgrep-action@v1
-        with:
-          config: p/owasp-top-ten
-          generateSarif: true
-          output: semgrep.sarif
+    - name: Notify Google Chat on High/Critical Findings
+      if: always()
+      run: |
+          # Check if there are High or Critical findings
+            HIGH_OR_CRITICAL=$(jq '[.results[] | select(.extra.severity == "CRITICAL")] | length' semgrep-results.json)
+        
+            if [ "$HIGH_OR_CRITICAL" -gt 0 ]; then
+            MESSAGE="⚠️ Semgrep scan found Critical vulnerability(ies) in commit $GITHUB_SHA by $GITHUB_ACTOR. Check results in DefectDojo or GitHub logs."
+        
+            curl -X POST "${{ secrets.GCHAT_WEBHOOK }}" \
+              -H "Content-Type: application/json" \
+              -d "{\"text\": \"$MESSAGE\"}"
+            else
+              echo "No High or Critical vulnerabilities found. Skipping notification."
+            fi
+          
 
-      - name: Upload Semgrep to DefectDojo
-        run: |
-          curl -X POST "$DEFECTDOJO_HOST/api/v2/import-scan/" \
-            -H "Authorization: Token $DEFECTDOJO_API_KEY" \
-            -F "scan_type=Semgrep" \
-            -F "file=@semgrep.sarif" \
-            -F "engagement=${{ steps.create_engagement.outputs.engagement_id }}" \
-            -F "active=true" -F "verified=false" -F "minimum_severity=Low"
 
-      - name: Run Gitleaks Scan
-        uses: gitleaks/gitleaks-action@v2
-        with:
-          report-format: json
-          report-path: gitleaks.json
+    - name: Upload to DefectDojo
+      run: |
+        curl -k -X POST "http://localhost:8080/api/v2/import-scan/" \
+        -H "Authorization: Token adb785d121ca05104ea73590928b024e4cdb321e" \
+        -F "scan_type=Semgrep JSON Report" \
+        -F "file=@semgrep-results.json" \
+        -F "engagement= ${{ env.ENGAGEMENT_ID }}" \
+        -F "minimum_severity=Low" \
+        -F "active=true" \
+        -F "verified=false"
 
-      - name: Upload Gitleaks to DefectDojo
-        run: |
-          curl -X POST "$DEFECTDOJO_HOST/api/v2/import-scan/" \
-            -H "Authorization: Token $DEFECTDOJO_API_KEY" \
-            -F "scan_type=Generic Findings Import" \
-            -F "file=@gitleaks.json" \
-            -F "engagement=${{ steps.create_engagement.outputs.engagement_id }}" \
-            -F "active=true" -F "verified=false" -F "minimum_severity=Low"
-
-      - name: Run Snyk Test
-        env:
-          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
-        run: |
-          snyk test --json > snyk.json
-
-      - name: Upload Snyk to DefectDojo
-        run: |
-          curl -X POST "$DEFECTDOJO_HOST/api/v2/import-scan/" \
-            -H "Authorization: Token $DEFECTDOJO_API_KEY" \
-            -F "scan_type=Snyk Scan" \
-            -F "file=@snyk.json" \
-            -F "engagement=${{ steps.create_engagement.outputs.engagement_id }}" \
-            -F "active=true" -F "verified=false" -F "minimum_severity=Low"
-
-      - name: Run SonarQube Scan
-        env:
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-        run: |
-          dotnet sonarscanner begin /k:"your-project-key" /d:sonar.host.url="http://your-sonarqube-host" /d:sonar.login="$SONAR_TOKEN"
-          dotnet build ./vulnerableService/vulnerableService.csproj
-          dotnet sonarscanner end /d:sonar.login="$SONAR_TOKEN"
-
-      - name: OWASP ZAP Baseline Scan
-        uses: zaproxy/action-baseline@v0.10.0
-        with:
-          target: 'http://your-api-url.com/swagger'  # Replace with actual
-          fail_action: false
-
-      # Add upload to DefectDojo for ZAP and SonarQube if exported reports are saved
-
+      

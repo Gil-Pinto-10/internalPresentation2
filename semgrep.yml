@@ -1,0 +1,76 @@
+rules:
+  - id: weak-md5-usage
+    pattern: MD5.Create()
+    message: Avoid using weak cryptographic algorithm MD5.
+    severity: ERROR
+    languages: [csharp]
+
+  - id: hardcoded-password
+    pattern: 'Password=hardcoded_password'
+    message: Hardcoded password found.
+    severity: ERROR
+    languages: [csharp]
+
+
+  - id: exposed-debug-env
+    pattern: Environment.GetEnvironmentVariables()
+    message: Exposing environment variables publicly may leak secrets.
+    severity: WARNING
+    languages: [csharp]
+
+  - id: insecure-auth-check
+    pattern: if ($REQ.Contains("admin"))
+    message: Insecure authentication logic — string matching is not authentication.
+    severity: ERROR
+    languages: [csharp]
+
+
+  - id: ssrf-httpclient
+    pattern: 'client.GetStringAsync($URL)'
+    message: SSRF risk — do not use untrusted input to build external requests.
+    severity: ERROR
+    languages: [csharp]
+
+  - id: insecure-script-exec
+    pattern: 'System.Diagnostics.Process.Start("bash", $SCRIPT)'
+    message: Arbitrary script execution is highly insecure.
+    severity: ERROR
+    languages: [csharp]
+
+  - id: no-logging-transfer
+    pattern: 'Results.Ok("Transferred " + $BODY)'
+    message: Missing transaction logging — cannot trace critical actions.
+    severity: WARNING
+    languages: [csharp]
+
+  - id: broken-access-control
+    pattern: 'app.MapGet("/admin", $FUNC)'
+    message: No authentication check on sensitive endpoint.
+    severity: ERROR
+    languages: [csharp]
+
+  - id: insecure-design
+    pattern: 'reset-password'
+    message: Insecure password reset logic (no OTP or strong authentication).
+    severity: WARNING
+    languages: [csharp]
+
+  - id: insecure-deserialization
+    patterns:
+      - pattern: |
+          JsonSerializer.Deserialize($TYPE)
+    message: "Insecure deserialization of untrusted input"
+    languages: [csharp]
+    severity: WARNING
+    metadata:
+      cwe: "CWE-502"
+      owasp: "A08:2021 - Software and Data Integrity Failures"
+
+
+  - id: sql-injection
+    pattern: |
+      var cmdText = $"SELECT * FROM Users WHERE Username = '{username}' AND Password = '{password}'";
+    message: "Possible SQL Injection risk due to unparameterized query."
+    languages:
+      - csharp
+    severity: CRITICAL  

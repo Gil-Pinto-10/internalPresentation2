@@ -1,0 +1,102 @@
+# .github/workflows/full-security-pipeline.yml
+name: Full DevSecOps Pipeline with DefectDojo
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+jobs:
+  devsecops:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Install Dependencies
+        run: |
+          sudo apt-get update && sudo apt-get install -y curl unzip
+          npm install -g snyk
+          dotnet tool install --global dotnet-sonarscanner
+
+      - name: Create Engagement in DefectDojo
+        id: create_engagement
+        env:
+          DEFECTDOJO_HOST: ${{ secrets.DEFECTDOJO_HOST }}
+          DEFECTDOJO_API_KEY: ${{ secrets.DEFECTDOJO_API_KEY }}
+          DEFECTDOJO_PRODUCT_ID: ${{ secrets.DEFECTDOJO_PRODUCT_ID }}
+        run: |
+          ENGAGEMENT_ID=$(curl -s -X POST "$DEFECTDOJO_HOST/api/v2/engagements/" \
+            -H "Authorization: Token $DEFECTDOJO_API_KEY" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "name": "CI Security Scan - $GITHUB_RUN_ID",
+              "product": $DEFECTDOJO_PRODUCT_ID,
+              "target_start": "$(date +%Y-%m-%d)",
+              "target_end": "$(date +%Y-%m-%d)",
+              "status": "In Progress"
+            }' | jq -r '.id')
+          echo "engagement_id=$ENGAGEMENT_ID" >> $GITHUB_OUTPUT
+
+      - name: Run Semgrep Scan
+        uses: returntocorp/semgrep-action@v1
+        with:
+          config: p/owasp-top-ten
+          generateSarif: true
+          output: semgrep.sarif
+
+      - name: Upload Semgrep to DefectDojo
+        run: |
+          curl -X POST "$DEFECTDOJO_HOST/api/v2/import-scan/" \
+            -H "Authorization: Token $DEFECTDOJO_API_KEY" \
+            -F "scan_type=Semgrep" \
+            -F "file=@semgrep.sarif" \
+            -F "engagement=${{ steps.create_engagement.outputs.engagement_id }}" \
+            -F "active=true" -F "verified=false" -F "minimum_severity=Low"
+
+      - name: Run Gitleaks Scan
+        uses: gitleaks/gitleaks-action@v2
+        with:
+          report-format: json
+          report-path: gitleaks.json
+
+      - name: Upload Gitleaks to DefectDojo
+        run: |
+          curl -X POST "$DEFECTDOJO_HOST/api/v2/import-scan/" \
+            -H "Authorization: Token $DEFECTDOJO_API_KEY" \
+            -F "scan_type=Generic Findings Import" \
+            -F "file=@gitleaks.json" \
+            -F "engagement=${{ steps.create_engagement.outputs.engagement_id }}" \
+            -F "active=true" -F "verified=false" -F "minimum_severity=Low"
+
+      - name: Run Snyk Test
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        run: |
+          snyk test --json > snyk.json
+
+      - name: Upload Snyk to DefectDojo
+        run: |
+          curl -X POST "$DEFECTDOJO_HOST/api/v2/import-scan/" \
+            -H "Authorization: Token $DEFECTDOJO_API_KEY" \
+            -F "scan_type=Snyk Scan" \
+            -F "file=@snyk.json" \
+            -F "engagement=${{ steps.create_engagement.outputs.engagement_id }}" \
+            -F "active=true" -F "verified=false" -F "minimum_severity=Low"
+
+      - name: Run SonarQube Scan
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        run: |
+          dotnet sonarscanner begin /k:"your-project-key" /d:sonar.host.url="http://your-sonarqube-host" /d:sonar.login="$SONAR_TOKEN"
+          dotnet build ./vulnerableService/vulnerableService.csproj
+          dotnet sonarscanner end /d:sonar.login="$SONAR_TOKEN"
+
+      - name: OWASP ZAP Baseline Scan
+        uses: zaproxy/action-baseline@v0.10.0
+        with:
+          target: 'http://your-api-url.com/swagger'  # Replace with actual
+          fail_action: false
+
+      # Add upload to DefectDojo for ZAP and SonarQube if exported reports are saved
+

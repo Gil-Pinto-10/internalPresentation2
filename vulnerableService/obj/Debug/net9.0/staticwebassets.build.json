@@ -1,0 +1,12 @@
+{
+  "Version": 1,
+  "Hash": "V8M1t3JIcxAjWO1hEHppSKhdF5jqnE261sZkqLw4tZk=",
+  "Source": "vulnerableService",
+  "BasePath": "_content/vulnerableService",
+  "Mode": "Default",
+  "ManifestType": "Build",
+  "ReferencedProjectsConfiguration": [],
+  "DiscoveryPatterns": [],
+  "Assets": [],
+  "Endpoints": []
+}

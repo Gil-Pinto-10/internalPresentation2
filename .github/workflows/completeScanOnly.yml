@@ -48,10 +48,16 @@ jobs:
       #####################################
       # 🔐 Semgrep - static analysis
       #####################################
+      
+      - name: Login to Semgrep
+        run: |
+          semgrep logout
+          SEMGREP_APP_TOKEN=${{ secrets.SEMGREP_TOKEN }} semgrep login
+      
       - name: Semgrep
         uses: returntocorp/semgrep-action@v1
         with:
-          config: auto
+          config: p/owasp-top-ten, semgrep.yml, p/security-audit, p/csharp
       
       #####################################
       # 🔐 CodeQL - static analysis
@@ -60,6 +66,9 @@ jobs:
         uses: github/codeql-action/init@v3
         with:
           languages: csharp
+          
+      - name: Build C# solution manually
+        run: dotnet build ./vulnerableService/vulnerableService.csproj  --configuration Release
 
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@v3

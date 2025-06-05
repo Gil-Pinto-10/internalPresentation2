@@ -74,3 +74,15 @@ rules:
     languages:
       - csharp
     severity: CRITICAL  
+    
+  - id: potential-idor-user-lookup
+    patterns:
+        - pattern: |
+            $VAR = $USER_COLLECTION.FirstOrDefault($LAMBDA => $LAMBDA.Id == $REQ.Id);
+    message: >
+        ⚠️ Potential IDOR: This line compares a client-provided ID (`$REQ.Id`) directly with internal data. Ensure you use the authenticated user's identity, not trusting client input.
+    languages: [csharp]
+    severity: WARNING
+    metadata:
+      category: security
+    cwe: "CWE-639: Authorization Bypass Through User-Controlled Key"    

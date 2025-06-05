@@ -26,14 +26,14 @@ jobs:
           dotnet-version: '9.0'  # adjust to match your SDK
 
       - name: Restore dependencies
-        run: dotnet restore
-
+        run: dotnet restore --project ./vulnerableService/vulnerableService.csproj
+      
       - name: Build
-        run: dotnet build --no-restore
-
+        run: dotnet build --no-restore --project ./vulnerableService/vulnerableService.csproj
+      
       - name: Run Web API
         run: |
-          dotnet run --no-build --project YourApiProject.csproj &
+          dotnet run --no-build --project ./vulnerableService/vulnerableService.csproj &
           sleep 10  # give the API time to start
       
       #####################################

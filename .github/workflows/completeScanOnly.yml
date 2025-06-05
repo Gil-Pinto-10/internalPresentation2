@@ -67,7 +67,7 @@ jobs:
       # 🔐 Snyk - dependency scan (NuGet)
       #####################################
       - name: Snyk Scan
-        uses: snyk/actions/dotnet@v1
+        uses: snyk/actions/dotnet@0.4.0
         with:
           args: test
         env:

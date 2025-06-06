@@ -52,7 +52,8 @@ jobs:
       - name: Login to Semgrep
         run: |
           semgrep logout
-          SEMGREP_APP_TOKEN=${{ secrets.SEMGREP_TOKEN }} semgrep login
+          SEMGREP_APP_TOKEN=${{ secrets.SEMGREP_TOKEN }} 
+          semgrep login
       
       - name: Semgrep
         uses: returntocorp/semgrep-action@v1

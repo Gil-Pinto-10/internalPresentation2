@@ -9,7 +9,7 @@ on:
 
 jobs:
   build-and-scan:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     services:
       web:
         image: mcr.microsoft.com/dotnet/aspnet:7.0
